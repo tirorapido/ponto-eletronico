@@ -106,6 +106,7 @@
     max-width: 90%; text-align: center;
   }
   .toast.show { opacity: 1; }
+  .nome-caps { text-transform: uppercase; }
   input, select {
     width: 100%;
     padding: 10px 12px;
@@ -239,7 +240,7 @@ function telaSelecionarColaborador() {
     <div class="card">
       <h2>Quem é você?</h2>
       ${colaboradores.map(c => `
-        <button class="emp-btn" onclick="window.__selecionarColaborador('${c.id}')">${c.nome}</button>
+        <button class="emp-btn nome-caps" onclick="window.__selecionarColaborador('${c.id}')">${c.nome}</button>
       `).join('')}
     </div>
     <div class="footer-link"><a onclick="window.__telaGestorPin()">Área do Gestor</a></div>
@@ -258,7 +259,7 @@ async function telaAcaoColaborador(colaboradorId) {
   const wd = weekdayOfDate(data);
 
   let html = `<div class="back-link" onclick="window.__voltarSelecao()">← Voltar</div>`;
-  html += `<div class="card"><h2>${c.nome}</h2>`;
+  html += `<div class="card"><h2 class="nome-caps">${c.nome}</h2>`;
 
   if (c.regime === 'clt') {
     const reg = await getRegistro(data, colaboradorId);
@@ -422,7 +423,7 @@ async function telaGestorPainel() {
       <p style="font-size:12px;color:#666;margin-top:0;">Atestado, falta justificada, folga concedida ou troca — não conta como falta comum no relatório.</p>
       <label>Colaborador</label>
       <select id="oColaborador">
-        ${colaboradores.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}
+        ${colaboradores.map(c => `<option value="${c.id}" style="text-transform:uppercase;">${c.nome}</option>`).join('')}
       </select>
       <label>Data</label>
       <input type="date" id="oData" value="${todayStr()}">
@@ -503,7 +504,7 @@ window.__listarOcorrencias = async () => {
         return `
           <tr>
             <td>${fmtDatePt(o.data)}</td>
-            <td>${colab ? colab.nome : '(removido)'}</td>
+            <td class="nome-caps">${colab ? colab.nome : '(removido)'}</td>
             <td><span class="badge" style="background:${tipoInfo.cor};">${tipoInfo.label}</span></td>
             <td style="font-size:11px;color:#666;">${o.observacao || '—'}</td>
             <td><button class="secondary danger" onclick="window.__removerOcorrencia('${o.id}')">Remover</button></td>
@@ -579,7 +580,7 @@ function renderListaGestor() {
       <tr><th>Nome</th><th>Regime</th><th></th></tr>
       ${colaboradores.map(c => `
         <tr>
-          <td>${c.nome}</td>
+          <td class="nome-caps">${c.nome}</td>
           <td><span class="badge ${c.regime}">${c.regime.toUpperCase()}</span></td>
           <td style="white-space:nowrap;">
             <button class="secondary" onclick="window.__editarColaborador('${c.id}')">Editar</button>
@@ -721,7 +722,7 @@ window.__gerarRelatorio = async () => {
       <tr><th>Nome</th><th>Regime</th><th>Presença</th><th>Faltas/Alertas</th><th>Horas/Passagens</th><th>Ocorrências</th></tr>
       ${linhas.map(l => `
         <tr>
-          <td>${l.nome}</td>
+          <td class="nome-caps">${l.nome}</td>
           <td><span class="badge ${l.regime}">${l.regime.toUpperCase()}</span></td>
           <td style="color:#1e7a46;font-weight:bold;">${l.presenca}</td>
           <td style="color:${l.faltasCor};font-weight:bold;">${l.faltas}</td>
