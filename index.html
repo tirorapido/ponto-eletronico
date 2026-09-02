@@ -459,9 +459,9 @@ async function telaGestorPainel() {
       <label>Tipo de ocorrência</label>
       <select id="oTipo">
         <option value="atestado">Atestado médico</option>
-        <option value="falta_justificada">Falta justificada</option>
+        <option value="falta_justificada">Não compareceu</option>
         <option value="folga">Folga concedida</option>
-        <option value="troca">Troca de dia/turno</option>
+        <option value="troca">Troca de plantão</option>
       </select>
       <label>Observação (opcional)</label>
       <input id="oObs" type="text" placeholder="Ex: troca com Fulano no dia 15">
@@ -489,9 +489,9 @@ async function telaGestorPainel() {
 
 const TIPOS_OCORRENCIA = {
   atestado: { label: "Atestado médico", cor: "#0A0A0A" },
-  falta_justificada: { label: "Falta justificada", cor: "#6B6B6B" },
+  falta_justificada: { label: "Não compareceu", cor: "#6B6B6B" },
   folga: { label: "Folga concedida", cor: "#1e7a46" },
-  troca: { label: "Troca de dia/turno", cor: "#E2001A" },
+  troca: { label: "Troca de plantão", cor: "#E2001A" },
 };
 
 window.__salvarOcorrencia = async () => {
@@ -514,33 +514,38 @@ window.__listarOcorrencias = async () => {
   const div = document.getElementById('gOcorrencias');
   div.innerHTML = `<p style="color:#999;font-size:12px;">Carregando...</p>`;
 
-  const snap = await getDocs(collection(db, "ocorrencias"));
-  const ocorrencias = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(o => o.data.startsWith(mes))
-    .sort((a, b) => a.data.localeCompare(b.data));
+  try {
+    const snap = await getDocs(collection(db, "ocorrencias"));
+    const ocorrencias = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(o => o.data && typeof o.data === 'string' && o.data.startsWith(mes))
+      .sort((a, b) => a.data.localeCompare(b.data));
 
-  if (ocorrencias.length === 0) {
-    div.innerHTML = `<p style="color:#999;font-size:13px;">Nenhuma ocorrência neste mês.</p>`;
-    return;
+    if (ocorrencias.length === 0) {
+      div.innerHTML = `<p style="color:#999;font-size:13px;">Nenhuma ocorrência neste mês.</p>`;
+      return;
+    }
+
+    div.innerHTML = `
+      <table>
+        <tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Obs.</th><th></th></tr>
+        ${ocorrencias.map(o => {
+          const colab = colaboradores.find(c => c.id === o.colaboradorId);
+          const tipoInfo = TIPOS_OCORRENCIA[o.tipo] || { label: o.tipo || '(tipo não informado)', cor: '#666' };
+          return `
+            <tr>
+              <td>${fmtDatePt(o.data)}</td>
+              <td class="nome-caps">${colab ? colab.nome : '(colaborador removido)'}</td>
+              <td><span class="badge" style="background:${tipoInfo.cor};">${tipoInfo.label}</span></td>
+              <td style="font-size:11px;color:#666;">${o.observacao || '—'}</td>
+              <td><button class="secondary danger" onclick="window.__removerOcorrencia('${o.id}')">Remover</button></td>
+            </tr>`;
+        }).join('')}
+      </table>`;
+  } catch (erro) {
+    console.error('Erro ao carregar ocorrências:', erro);
+    div.innerHTML = `<p style="color:#c0392b;font-size:12px;">Erro ao carregar ocorrências. Detalhe: ${erro.message || erro}</p>`;
   }
-
-  div.innerHTML = `
-    <table>
-      <tr><th>Data</th><th>Colaborador</th><th>Tipo</th><th>Obs.</th><th></th></tr>
-      ${ocorrencias.map(o => {
-        const colab = colaboradores.find(c => c.id === o.colaboradorId);
-        const tipoInfo = TIPOS_OCORRENCIA[o.tipo] || { label: o.tipo, cor: '#666' };
-        return `
-          <tr>
-            <td>${fmtDatePt(o.data)}</td>
-            <td class="nome-caps">${colab ? colab.nome : '(removido)'}</td>
-            <td><span class="badge" style="background:${tipoInfo.cor};">${tipoInfo.label}</span></td>
-            <td style="font-size:11px;color:#666;">${o.observacao || '—'}</td>
-            <td><button class="secondary danger" onclick="window.__removerOcorrencia('${o.id}')">Remover</button></td>
-          </tr>`;
-      }).join('')}
-    </table>`;
 };
 
 window.__removerOcorrencia = async (id) => {
@@ -684,20 +689,74 @@ function formatarHoras(horasDecimais) {
 
 let ultimoRelatorio = { mes: null, linhas: [] };
 
+function gerarDetalheDias(c, doColab, ocorrDoColab) {
+  const porData = {};
+  const addInfo = (data, texto) => {
+    if (!porData[data]) porData[data] = [];
+    porData[data].push(texto);
+  };
+
+  if (c.regime === 'clt') {
+    doColab.forEach(r => {
+      if (r.falta === true) {
+        addInfo(r.data, '❌ Falta');
+      } else {
+        const modal = r.modalidade === 'presencial' ? '🏢 Presencial' : (r.modalidade === 'home_office' ? '🏠 Home Office' : '');
+        let horario = '';
+        if (r.entrada && r.saida) {
+          const almoco = (r.saidaAlmoco && r.retornoAlmoco) ? `, almoço ${r.saidaAlmoco}–${r.retornoAlmoco}` : '';
+          horario = ` — ${r.entrada} às ${r.saida}${almoco} (${formatarHoras(calcularHoras(r))})`;
+        } else if (r.entrada) {
+          horario = ` — entrada ${r.entrada} (sem saída registrada)`;
+        }
+        if (modal || horario) addInfo(r.data, `${modal}${horario}`);
+      }
+    });
+  } else if (c.regime === 'mei') {
+    doColab.forEach(r => {
+      if (r.unidade) addInfo(r.data, `🏢 ${r.unidade}`);
+      if (r.tipo === 'plantao_extra') addInfo(r.data, '➕ Plantão extra');
+      if (r.tipo === 'home_office') addInfo(r.data, '🏠 Home Office');
+    });
+  } else {
+    doColab.forEach(r => {
+      if (r.falta === true) {
+        addInfo(r.data, '❌ Falta');
+      } else if (r.falta === false) {
+        addInfo(r.data, r.modalidade === 'presencial' ? '🏢 Presencial' : (r.modalidade === 'home_office' ? '🏠 Home Office' : '✅ Presença'));
+      }
+    });
+  }
+
+  ocorrDoColab.forEach(o => {
+    const tipoInfo = TIPOS_OCORRENCIA[o.tipo] || { label: o.tipo };
+    addInfo(o.data, `📋 ${tipoInfo.label}${o.observacao ? ' — ' + o.observacao : ''}`);
+  });
+
+  return Object.entries(porData)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([data, itens]) => {
+      const unidadesNoDia = itens.filter(i => i.startsWith('🏢')).length;
+      const destaque = (c.regime === 'mei' && unidadesNoDia >= 2) ? ' — 🔥 DIA COM 2 UNIDADES' : '';
+      return { data, descricao: itens.join('  +  ') + destaque };
+    });
+}
+
 window.__gerarRelatorio = async () => {
   const mes = document.getElementById('gMes').value;
   const div = document.getElementById('gRelatorio');
   div.innerHTML = `<p style="color:#999;font-size:12px;">Calculando...</p>`;
 
+  try {
   const regSnap = await getDocs(collection(db, "registros"));
-  const registros = regSnap.docs.map(d => d.data());
+  const registros = regSnap.docs.map(d => d.data()).filter(r => r.data && typeof r.data === 'string');
 
   const ocorrSnap = await getDocs(collection(db, "ocorrencias"));
-  const ocorrencias = ocorrSnap.docs.map(d => d.data());
+  const ocorrencias = ocorrSnap.docs.map(d => d.data()).filter(o => o.data && typeof o.data === 'string');
 
   const linhas = colaboradores.map(c => {
     const doColab = registros.filter(r => r.colaboradorId === c.id && r.data.startsWith(mes));
-    const ocorrDoColab = ocorrencias.filter(o => o.colaboradorId === c.id && o.data.startsWith(mes));
+    const ocorrDoColab = ocorrencias.filter(o => o.colaboradorId === c.id && o.data && typeof o.data === 'string' && o.data.startsWith(mes));
     const datasComOcorrencia = new Set(ocorrDoColab.map(o => o.data));
     const resumoOcorrencias = Object.entries(
       ocorrDoColab.reduce((acc, o) => { acc[o.tipo] = (acc[o.tipo] || 0) + 1; return acc; }, {})
@@ -713,11 +772,12 @@ window.__gerarRelatorio = async () => {
       return {
         nome: c.nome, regime: c.regime,
         presenca: `${diasPresenca} dias`,
-        faltas: `${faltas}`,
+        faltas: `${faltas} falta(s)`,
         faltasCor: faltas > 0 ? '#c0392b' : '#1e7a46',
         extra: formatarHoras(totalHoras),
         modalidade: `🏢 ${diasPresencial} · 🏠 ${diasHomeOffice}`,
         ocorrencias: resumoOcorrencias,
+        detalheDias: gerarDetalheDias(c, doColab, ocorrDoColab),
       };
     } else if (c.regime === 'mei') {
       const porDia = {};
@@ -733,11 +793,12 @@ window.__gerarRelatorio = async () => {
       return {
         nome: c.nome, regime: c.regime,
         presenca: `${diasTrabalhados} dias`,
-        faltas: `${diasDuplaUnidade} c/ 2 unid. · ${plantoesExtras} extra(s)`,
+        faltas: `${diasDuplaUnidade} dia(s) com 2 unidades · ${plantoesExtras} plantão(ões) extra(s)`,
         faltasCor: (diasDuplaUnidade > 0 || plantoesExtras > 0) ? '#E2001A' : '#999',
         extra: `${totalPassagens} passagens`,
         modalidade: `🏢 ${diasTrabalhados} · 🏠 ${diasHomeOffice}`,
         ocorrencias: resumoOcorrencias,
+        detalheDias: gerarDetalheDias(c, doColab, ocorrDoColab),
       };
     } else {
       // escala
@@ -748,11 +809,12 @@ window.__gerarRelatorio = async () => {
       return {
         nome: c.nome, regime: c.regime,
         presenca: `${diasPresenca} dias`,
-        faltas: `${faltas}`,
+        faltas: `${faltas} falta(s)`,
         faltasCor: faltas > 0 ? '#c0392b' : '#1e7a46',
         extra: '—',
         modalidade: `🏢 ${diasPresencial} · 🏠 ${diasHomeOffice}`,
         ocorrencias: resumoOcorrencias,
+        detalheDias: gerarDetalheDias(c, doColab, ocorrDoColab),
       };
     }
   });
@@ -773,7 +835,36 @@ window.__gerarRelatorio = async () => {
           <td style="font-size:10px;color:#666;">${l.ocorrencias}</td>
         </tr>
       `).join('')}
-    </table>`;
+    </table>
+
+    <p style="font-size:11px;color:#888;margin-top:14px;margin-bottom:6px;">
+      Resumo confuso? Abra o detalhamento dia a dia de cada colaborador abaixo 👇
+    </p>
+
+    ${linhas.map(l => `
+      <details style="margin-bottom:6px;background:#F0EEE8;border-radius:8px;padding:8px 12px;">
+        <summary class="nome-caps" style="cursor:pointer;font-weight:bold;font-size:13px;">
+          ${l.nome} <span style="font-weight:normal;color:#888;font-size:11px;">— ${l.detalheDias.length} dia(s) com registro</span>
+        </summary>
+        ${l.detalheDias.length === 0
+          ? `<p style="font-size:12px;color:#999;margin:8px 0 0;">Nenhum registro neste mês.</p>`
+          : `<table style="margin-top:8px;">
+              <tr><th>Data</th><th>O que aconteceu</th></tr>
+              ${l.detalheDias.map(d => `
+                <tr>
+                  <td style="white-space:nowrap;">${fmtDatePt(d.data)}</td>
+                  <td style="font-size:12px;">${d.descricao}</td>
+                </tr>
+              `).join('')}
+            </table>`
+        }
+      </details>
+    `).join('')}
+  `;
+  } catch (erro) {
+    console.error('Erro ao gerar relatório:', erro);
+    div.innerHTML = `<p style="color:#c0392b;font-size:12px;">Erro ao gerar relatório. Detalhe: ${erro.message || erro}</p>`;
+  }
 };
 
 window.__exportarRelatorioCSV = () => {
