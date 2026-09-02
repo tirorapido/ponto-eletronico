@@ -396,6 +396,7 @@ window.__validarPin = () => {
 };
 
 async function telaGestorPainel() {
+  editandoColaboradorId = null;
   const app = document.getElementById('app');
   app.innerHTML = `
     <div class="back-link" onclick="window.__voltarSelecao()">← Sair da área do gestor</div>
@@ -546,16 +547,23 @@ window.__salvarColaborador = async () => {
   const regime = document.getElementById('gRegime').value;
   if (!nome) { toast('Digite o nome.'); return; }
 
-  const novo = { nome, regime };
+  const dadosColaborador = { nome, regime };
   if (regime === 'clt') {
-    novo.entradaPadrao = document.getElementById('gEntrada').value;
-    novo.saidaPadrao = document.getElementById('gSaida').value;
+    dadosColaborador.entradaPadrao = document.getElementById('gEntrada').value;
+    dadosColaborador.saidaPadrao = document.getElementById('gSaida').value;
   }
   if (regime === 'escala') {
-    novo.diasEscala = Array.from(document.querySelectorAll('.gDiaChk:checked')).map(c => Number(c.value));
+    dadosColaborador.diasEscala = Array.from(document.querySelectorAll('.gDiaChk:checked')).map(c => Number(c.value));
   }
-  await addDoc(collection(db, "colaboradores"), novo);
-  toast('Colaborador cadastrado!');
+
+  if (editandoColaboradorId) {
+    await setDoc(doc(db, "colaboradores", editandoColaboradorId), dadosColaborador);
+    toast('Colaborador atualizado!');
+    editandoColaboradorId = null;
+  } else {
+    await addDoc(collection(db, "colaboradores"), dadosColaborador);
+    toast('Colaborador cadastrado!');
+  }
   await carregarColaboradores();
   telaGestorPainel();
 };
@@ -568,12 +576,54 @@ function renderListaGestor() {
   }
   div.innerHTML = `
     <table>
-      <tr><th>Nome</th><th>Regime</th></tr>
+      <tr><th>Nome</th><th>Regime</th><th></th></tr>
       ${colaboradores.map(c => `
-        <tr><td>${c.nome}</td><td><span class="badge ${c.regime}">${c.regime.toUpperCase()}</span></td></tr>
+        <tr>
+          <td>${c.nome}</td>
+          <td><span class="badge ${c.regime}">${c.regime.toUpperCase()}</span></td>
+          <td style="white-space:nowrap;">
+            <button class="secondary" onclick="window.__editarColaborador('${c.id}')">Editar</button>
+            <button class="secondary danger" onclick="window.__excluirColaborador('${c.id}')">Excluir</button>
+          </td>
+        </tr>
       `).join('')}
     </table>`;
 }
+
+let editandoColaboradorId = null;
+
+window.__editarColaborador = (id) => {
+  const c = colaboradores.find(x => x.id === id);
+  if (!c) return;
+  editandoColaboradorId = id;
+
+  document.getElementById('gNome').value = c.nome;
+  document.getElementById('gRegime').value = c.regime;
+  window.__atualizarExtraRegime();
+
+  if (c.regime === 'clt') {
+    document.getElementById('gEntrada').value = c.entradaPadrao || '09:00';
+    document.getElementById('gSaida').value = c.saidaPadrao || '18:00';
+  } else if (c.regime === 'escala') {
+    (c.diasEscala || []).forEach(d => {
+      const chk = document.querySelector(`.gDiaChk[value="${d}"]`);
+      if (chk) chk.checked = true;
+    });
+  }
+
+  const btn = document.querySelector('#gNome').closest('.card').querySelector('button.action-btn');
+  btn.textContent = '💾 Salvar edição';
+  document.querySelector('#gNome').closest('.card').scrollIntoView({ behavior: 'smooth' });
+};
+
+window.__excluirColaborador = async (id) => {
+  const c = colaboradores.find(x => x.id === id);
+  if (!confirm(`Excluir ${c ? c.nome : 'este colaborador'}? Os registros de ponto já feitos serão mantidos no histórico, mas ele não vai mais aparecer na lista de seleção.`)) return;
+  await deleteDoc(doc(db, "colaboradores", id));
+  toast('Colaborador excluído.');
+  await carregarColaboradores();
+  telaGestorPainel();
+};
 
 function calcularMinutos(inicio, fim) {
   if (!inicio || !fim) return 0;
