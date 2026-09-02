@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Tiro Rápido — Ponto Eletrônico</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #F0EEE8;
+    margin: 0;
+    padding: 0;
+    color: #222;
+    min-height: 100vh;
+  }
+  header {
+    background: #0A0A0A;
+    color: #fff;
+    padding: 16px 20px;
+    text-align: center;
+  }
+  header h1 { font-size: 18px; margin: 0; font-style: italic; }
+  header h1 span { color: #E2001A; }
+  header .sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+  .container { max-width: 480px; margin: 0 auto; padding: 20px 16px 60px; }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 22px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  .card h2 { margin-top: 0; font-size: 17px; }
+  .emp-btn {
+    display: block;
+    width: 100%;
+    padding: 16px;
+    margin-bottom: 10px;
+    border: none;
+    border-radius: 10px;
+    background: #F0EEE8;
+    font-size: 16px;
+    font-weight: bold;
+    color: #0A0A0A;
+    cursor: pointer;
+    text-align: left;
+  }
+  .emp-btn:active { background: #e2e0da; }
+  .action-btn {
+    display: block;
+    width: 100%;
+    padding: 18px;
+    margin-bottom: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #fff;
+  }
+  .action-btn.entrada { background: #1e7a46; }
+  .action-btn.saida { background: #0A0A0A; }
+  .action-btn.presenca { background: #1e7a46; }
+  .action-btn.falta { background: #c0392b; }
+  .action-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .back-link {
+    display: inline-block;
+    margin-bottom: 14px;
+    color: #666;
+    font-size: 14px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .status-box {
+    background: #F0EEE8;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .status-box .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .status-box .row:last-child { margin-bottom: 0; }
+  .status-ok { color: #1e7a46; font-weight: bold; }
+  .status-pending { color: #999; }
+  .status-falta { color: #c0392b; font-weight: bold; }
+  .confirm {
+    text-align: center;
+    padding: 30px 10px;
+  }
+  .confirm .icon { font-size: 50px; margin-bottom: 10px; }
+  .confirm h2 { margin: 0 0 6px; }
+  .confirm p { color: #666; }
+  .loading { text-align: center; padding: 60px 20px; color: #999; }
+  .footer-link {
+    text-align: center;
+    margin-top: 30px;
+    font-size: 12px;
+    color: #aaa;
+  }
+  .footer-link a { color: #aaa; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #0A0A0A; color: #fff; padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    max-width: 90%; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+  input, select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: Arial, sans-serif;
+    margin-bottom: 10px;
+  }
+  label { font-size: 13px; font-weight: bold; color: #555; display: block; margin-bottom: 4px; margin-top: 10px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+  th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #eee; }
+  th { background: #F0EEE8; font-size: 10px; text-transform: uppercase; color: #555; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: bold; color: #fff; }
+  .badge.clt { background: #0A0A0A; }
+  .badge.escala { background: #E2001A; }
+  .badge.mei { background: #888; }
+  .row-flex { display: flex; gap: 8px; }
+  .row-flex > div { flex: 1; }
+  button.secondary { background: #eee; color: #333; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button.danger { background: #fdecea; color: #c0392b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TIRO<span>O</span> RÁPIDO</h1>
+  <div class="sub">Ponto Eletrônico</div>
+</header>
+
+<div class="container" id="app">
+  <div class="loading">Carregando...</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ====================== FIREBASE ====================== -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
+  query, where, updateDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ============================================================
+// CONFIGURAÇÃO DO FIREBASE — SUBSTITUA PELOS DADOS DO SEU PROJETO
+// (Firebase Console → Configurações do Projeto → Seus apps → SDK)
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAbvkjWxMr1UKa6QwpXBKnsPJCG6kiU0C8",
+  authDomain: "tirorapido-ponto.firebaseapp.com",
+  projectId: "tirorapido-ponto",
+  storageBucket: "tirorapido-ponto.firebasestorage.app",
+  messagingSenderId: "133343595247",
+  appId: "1:133343595247:web:eb480c1f71cabbada5a91a"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const DIAS_SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+const GESTOR_PIN = "1234"; // troque para o PIN que preferir
+
+function todayStr() {
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+function nowTime() {
+  const d = new Date();
+  return d.toTimeString().slice(0,5);
+}
+function weekdayOfDate(iso) {
+  return new Date(iso + 'T12:00:00').getDay();
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+let colaboradores = [];
+
+async function carregarColaboradores() {
+  const snap = await getDocs(collection(db, "colaboradores"));
+  colaboradores = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function getRegistro(data, colaboradorId) {
+  const ref = doc(db, "registros", `${data}_${colaboradorId}`);
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : {};
+}
+
+async function salvarRegistro(data, colaboradorId, campos) {
+  const ref = doc(db, "registros", `${data}_${colaboradorId}`);
+  await setDoc(ref, { data, colaboradorId, ...campos }, { merge: true });
+}
+
+// ============================================================
+// TELA: SELECIONAR COLABORADOR
+// ============================================================
+function telaSelecionarColaborador() {
+  const app = document.getElementById('app');
+  if (colaboradores.length === 0) {
+    app.innerHTML = `
+      <div class="card">
+        <p style="text-align:center;color:#999;">Nenhum colaborador cadastrado ainda.</p>
+        <button class="action-btn saida" onclick="window.__telaGestorPin()">Área do Gestor</button>
+      </div>`;
+    return;
+  }
+  app.innerHTML = `
+    <div class="card">
+      <h2>Quem é você?</h2>
+      ${colaboradores.map(c => `
+        <button class="emp-btn" onclick="window.__selecionarColaborador('${c.id}')">${c.nome}</button>
+      `).join('')}
+    </div>
+    <div class="footer-link"><a onclick="window.__telaGestorPin()">Área do Gestor</a></div>
+  `;
+}
+
+// ============================================================
+// TELA: AÇÃO DO COLABORADOR (após selecionar nome)
+// ============================================================
+async function telaAcaoColaborador(colaboradorId) {
+  const app = document.getElementById('app');
+  app.innerHTML = `<div class="loading">Carregando...</div>`;
+
+  const c = colaboradores.find(x => x.id === colaboradorId);
+  const data = todayStr();
+  const reg = await getRegistro(data, colaboradorId);
+  const wd = weekdayOfDate(data);
+
+  let html = `<div class="back-link" onclick="window.__voltarSelecao()">← Voltar</div>`;
+  html += `<div class="card"><h2>${c.nome}</h2>`;
+
+  if (c.regime === 'clt') {
+    html += `
+      <div class="status-box">
+        <div class="row"><span>Entrada hoje</span> <span class="${reg.entrada ? 'status-ok' : 'status-pending'}">${reg.entrada || 'não registrada'}</span></div>
+        <div class="row"><span>Saída hoje</span> <span class="${reg.saida ? 'status-ok' : 'status-pending'}">${reg.saida || 'não registrada'}</span></div>
+      </div>
+    `;
+    if (!reg.entrada) {
+      html += `<button class="action-btn entrada" onclick="window.__registrarPonto('${colaboradorId}','entrada')">✅ Registrar Entrada</button>`;
+    } else if (!reg.saida) {
+      html += `<button class="action-btn saida" onclick="window.__registrarPonto('${colaboradorId}','saida')">🚪 Registrar Saída</button>`;
+    } else {
+      html += `<p style="text-align:center;color:#1e7a46;font-weight:bold;">Ponto do dia já registrado!</p>`;
+    }
+  } else if (c.regime === 'escala') {
+    const trabalhaHoje = (c.diasEscala || []).includes(wd);
+    if (!trabalhaHoje) {
+      html += `<p style="text-align:center;color:#999;">Você não está escalado(a) para hoje (${DIAS_SEMANA[wd]}).</p>`;
+    } else if (reg.falta === true) {
+      html += `<p style="text-align:center;color:#c0392b;font-weight:bold;">Falta já registrada para hoje.</p>`;
+    } else if (reg.falta === false) {
+      html += `<p style="text-align:center;color:#1e7a46;font-weight:bold;">Presença já confirmada hoje!</p>`;
+    } else {
+      html += `
+        <button class="action-btn presenca" onclick="window.__registrarPresencaEscala('${colaboradorId}', false)">✅ Confirmar Presença</button>
+        <button class="action-btn falta" onclick="window.__registrarPresencaEscala('${colaboradorId}', true)">❌ Registrar Falta</button>
+      `;
+    }
+  } else {
+    // mei
+    if (reg.falta === true) {
+      html += `<p style="text-align:center;color:#c0392b;font-weight:bold;">Falta já registrada para hoje.</p>`;
+    } else if (reg.falta === false) {
+      html += `<p style="text-align:center;color:#1e7a46;font-weight:bold;">Presença já confirmada hoje!</p>`;
+    } else {
+      html += `
+        <button class="action-btn presenca" onclick="window.__registrarPresencaEscala('${colaboradorId}', false)">✅ Confirmar Presença</button>
+        <button class="action-btn falta" onclick="window.__registrarPresencaEscala('${colaboradorId}', true)">❌ Registrar Falta</button>
+      `;
+    }
+  }
+
+  html += `</div>`;
+  app.innerHTML = html;
+}
+
+window.__selecionarColaborador = (id) => telaAcaoColaborador(id);
+window.__voltarSelecao = () => telaSelecionarColaborador();
+
+window.__registrarPonto = async (colaboradorId, campo) => {
+  const data = todayStr();
+  const hora = nowTime();
+  await salvarRegistro(data, colaboradorId, { [campo]: hora });
+  toast(`${campo === 'entrada' ? 'Entrada' : 'Saída'} registrada às ${hora}!`);
+  telaAcaoColaborador(colaboradorId);
+};
+
+window.__registrarPresencaEscala = async (colaboradorId, falta) => {
+  const data = todayStr();
+  await salvarRegistro(data, colaboradorId, { falta });
+  toast(falta ? 'Falta registrada.' : 'Presença confirmada!');
+  telaAcaoColaborador(colaboradorId);
+};
+
+// ============================================================
+// ÁREA DO GESTOR (protegida por PIN simples)
+// ============================================================
+window.__telaGestorPin = () => {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="back-link" onclick="window.__voltarSelecao()">← Voltar</div>
+    <div class="card">
+      <h2>Área do Gestor</h2>
+      <label>PIN de acesso</label>
+      <input type="password" id="pinInput" inputmode="numeric" maxlength="4" placeholder="****">
+      <button class="action-btn saida" onclick="window.__validarPin()">Entrar</button>
+    </div>
+  `;
+};
+
+window.__validarPin = () => {
+  const pin = document.getElementById('pinInput').value;
+  if (pin === GESTOR_PIN) {
+    telaGestorPainel();
+  } else {
+    toast('PIN incorreto.');
+  }
+};
+
+async function telaGestorPainel() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="back-link" onclick="window.__voltarSelecao()">← Sair da área do gestor</div>
+    <div class="card">
+      <h2>Cadastrar colaborador</h2>
+      <label>Nome</label>
+      <input id="gNome" type="text" placeholder="Nome completo">
+      <label>Regime</label>
+      <select id="gRegime" onchange="window.__atualizarExtraRegime()">
+        <option value="clt">CLT (entrada/saída)</option>
+        <option value="escala">Escala (dias fixos)</option>
+        <option value="mei">MEI (presença/falta)</option>
+      </select>
+      <div id="gExtra"></div>
+      <button class="action-btn entrada" onclick="window.__salvarColaborador()">+ Adicionar</button>
+    </div>
+    <div class="card">
+      <h2>Colaboradores (${colaboradores.length})</h2>
+      <div id="gLista"></div>
+    </div>
+    <div class="card">
+      <h2>Relatório mensal</h2>
+      <label>Mês</label>
+      <input type="month" id="gMes" value="${todayStr().slice(0,7)}" onchange="window.__gerarRelatorio()">
+      <div id="gRelatorio"></div>
+    </div>
+  `;
+  window.__atualizarExtraRegime();
+  renderListaGestor();
+  window.__gerarRelatorio();
+}
+
+window.__atualizarExtraRegime = () => {
+  const regime = document.getElementById('gRegime').value;
+  const extra = document.getElementById('gExtra');
+  if (regime === 'clt') {
+    extra.innerHTML = `
+      <div class="row-flex">
+        <div><label>Entrada padrão</label><input id="gEntrada" type="time" value="09:00"></div>
+        <div><label>Saída padrão</label><input id="gSaida" type="time" value="18:00"></div>
+      </div>`;
+  } else if (regime === 'escala') {
+    extra.innerHTML = `
+      <label>Dias de trabalho</label>
+      ${DIAS_SEMANA.map((d,i) => `
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
+          <input type="checkbox" class="gDiaChk" value="${i}" style="width:auto;"> ${d}
+        </label>
+      `).join('')}`;
+  } else {
+    extra.innerHTML = `<p style="font-size:12px;color:#666;">Apenas presença/falta será registrada.</p>`;
+  }
+};
+
+window.__salvarColaborador = async () => {
+  const nome = document.getElementById('gNome').value.trim();
+  const regime = document.getElementById('gRegime').value;
+  if (!nome) { toast('Digite o nome.'); return; }
+
+  const novo = { nome, regime };
+  if (regime === 'clt') {
+    novo.entradaPadrao = document.getElementById('gEntrada').value;
+    novo.saidaPadrao = document.getElementById('gSaida').value;
+  }
+  if (regime === 'escala') {
+    novo.diasEscala = Array.from(document.querySelectorAll('.gDiaChk:checked')).map(c => Number(c.value));
+  }
+  await addDoc(collection(db, "colaboradores"), novo);
+  toast('Colaborador cadastrado!');
+  await carregarColaboradores();
+  telaGestorPainel();
+};
+
+function renderListaGestor() {
+  const div = document.getElementById('gLista');
+  if (colaboradores.length === 0) {
+    div.innerHTML = `<p style="color:#999;font-size:13px;">Nenhum colaborador ainda.</p>`;
+    return;
+  }
+  div.innerHTML = `
+    <table>
+      <tr><th>Nome</th><th>Regime</th></tr>
+      ${colaboradores.map(c => `
+        <tr><td>${c.nome}</td><td><span class="badge ${c.regime}">${c.regime.toUpperCase()}</span></td></tr>
+      `).join('')}
+    </table>`;
+}
+
+window.__gerarRelatorio = async () => {
+  const mes = document.getElementById('gMes').value;
+  const div = document.getElementById('gRelatorio');
+  div.innerHTML = `<p style="color:#999;font-size:12px;">Calculando...</p>`;
+
+  const regSnap = await getDocs(collection(db, "registros"));
+  const registros = regSnap.docs.map(d => d.data());
+
+  const linhas = colaboradores.map(c => {
+    const doColab = registros.filter(r => r.colaboradorId === c.id && r.data.startsWith(mes));
+    const faltas = doColab.filter(r => r.falta === true).length;
+    return { nome: c.nome, regime: c.regime, dias: doColab.length, faltas };
+  });
+
+  div.innerHTML = `
+    <table>
+      <tr><th>Nome</th><th>Regime</th><th>Dias c/ registro</th><th>Faltas</th></tr>
+      ${linhas.map(l => `
+        <tr>
+          <td>${l.nome}</td>
+          <td><span class="badge ${l.regime}">${l.regime.toUpperCase()}</span></td>
+          <td>${l.dias}</td>
+          <td style="color:${l.faltas > 0 ? '#c0392b' : '#1e7a46'};font-weight:bold;">${l.faltas}</td>
+        </tr>
+      `).join('')}
+    </table>`;
+};
+
+// ============================================================
+// INIT
+// ============================================================
+(async function init() {
+  try {
+    await carregarColaboradores();
+    telaSelecionarColaborador();
+  } catch (e) {
+    console.error(e);
+    document.getElementById('app').innerHTML = `
+      <div class="card">
+        <p style="color:#c0392b;">Não foi possível conectar ao banco de dados.</p>
+        <p style="font-size:12px;color:#888;">Verifique se as credenciais do Firebase (firebaseConfig) foram preenchidas corretamente no código.</p>
+      </div>`;
+  }
+})();
+</script>
+
+</body>
+</html>
