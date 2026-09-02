@@ -265,13 +265,17 @@ async function telaAcaoColaborador(colaboradorId) {
     const reg = await getRegistro(data, colaboradorId);
     html += `
       <div class="status-box">
+        <div class="row"><span>Modalidade</span> <span class="${reg.modalidade ? 'status-ok' : 'status-pending'}">${reg.modalidade ? (reg.modalidade === 'presencial' ? '🏢 Presencial' : '🏠 Home Office') : 'não escolhida'}</span></div>
         <div class="row"><span>Entrada</span> <span class="${reg.entrada ? 'status-ok' : 'status-pending'}">${reg.entrada || 'não registrada'}</span></div>
         <div class="row"><span>Saída almoço</span> <span class="${reg.saidaAlmoco ? 'status-ok' : 'status-pending'}">${reg.saidaAlmoco || 'não registrada'}</span></div>
         <div class="row"><span>Retorno almoço</span> <span class="${reg.retornoAlmoco ? 'status-ok' : 'status-pending'}">${reg.retornoAlmoco || 'não registrado'}</span></div>
         <div class="row"><span>Saída</span> <span class="${reg.saida ? 'status-ok' : 'status-pending'}">${reg.saida || 'não registrada'}</span></div>
       </div>
     `;
-    if (!reg.entrada) {
+    if (!reg.modalidade) {
+      html += `<button class="action-btn presenca" onclick="window.__registrarModalidade('${colaboradorId}','presencial')">🏢 Hoje é Presencial</button>`;
+      html += `<button class="action-btn saida" onclick="window.__registrarModalidade('${colaboradorId}','home_office')">🏠 Hoje é Home Office</button>`;
+    } else if (!reg.entrada) {
       html += `<button class="action-btn entrada" onclick="window.__registrarPonto('${colaboradorId}','entrada')">✅ Registrar Entrada</button>`;
     } else if (!reg.saidaAlmoco) {
       html += `<button class="action-btn saida" onclick="window.__registrarPonto('${colaboradorId}','saidaAlmoco')">🍽️ Registrar Saída para o Almoço</button>`;
@@ -290,33 +294,41 @@ async function telaAcaoColaborador(colaboradorId) {
     } else if (reg.falta === true) {
       html += `<p style="text-align:center;color:#c0392b;font-weight:bold;">Falta já registrada para hoje.</p>`;
     } else if (reg.falta === false) {
-      html += `<p style="text-align:center;color:#1e7a46;font-weight:bold;">Presença já confirmada hoje!</p>`;
+      html += `<p style="text-align:center;color:#1e7a46;font-weight:bold;">Presença já confirmada hoje (${reg.modalidade === 'presencial' ? '🏢 Presencial' : '🏠 Home Office'})!</p>`;
     } else {
       html += `
-        <button class="action-btn presenca" onclick="window.__registrarPresencaEscala('${colaboradorId}', false)">✅ Confirmar Presença</button>
-        <button class="action-btn falta" onclick="window.__registrarPresencaEscala('${colaboradorId}', true)">❌ Registrar Falta</button>
+        <button class="action-btn presenca" onclick="window.__registrarPresencaEscala('${colaboradorId}', false, 'presencial')">🏢 Presença Presencial</button>
+        <button class="action-btn entrada" onclick="window.__registrarPresencaEscala('${colaboradorId}', false, 'home_office')">🏠 Presença Home Office</button>
+        <button class="action-btn falta" onclick="window.__registrarPresencaEscala('${colaboradorId}', true, null)">❌ Registrar Falta</button>
       `;
     }
   } else {
-    // MEI — presença por unidade, permite as duas no mesmo dia + plantão extra
+    // MEI — presença por unidade (presencial), permite as duas no mesmo dia + plantão extra + home office
     const regs = await getRegistrosMEIDoDia(data, colaboradorId);
     const extraRef = doc(db, "registros", `${data}_${colaboradorId}_extra`);
     const extraSnap = await getDoc(extraRef);
     const plantaoExtra = extraSnap.exists() ? extraSnap.data() : null;
+    const homeRef = doc(db, "registros", `${data}_${colaboradorId}_homeoffice`);
+    const homeSnap = await getDoc(homeRef);
+    const homeOffice = homeSnap.exists() ? homeSnap.data() : null;
 
     html += `
       <div class="status-box">
         ${UNIDADES_MEI.map(u => `
-          <div class="row"><span>${u}</span> <span class="${regs[u] ? 'status-ok' : 'status-pending'}">${regs[u] ? 'Confirmado às ' + regs[u].hora : 'não registrado'}</span></div>
+          <div class="row"><span>🏢 ${u} (presencial)</span> <span class="${regs[u] ? 'status-ok' : 'status-pending'}">${regs[u] ? 'Confirmado às ' + regs[u].hora : 'não registrado'}</span></div>
         `).join('')}
-        <div class="row"><span>Plantão extra</span> <span class="${plantaoExtra ? 'status-ok' : 'status-pending'}">${plantaoExtra ? 'Confirmado às ' + plantaoExtra.hora : 'não registrado'}</span></div>
+        <div class="row"><span>🏠 Home Office</span> <span class="${homeOffice ? 'status-ok' : 'status-pending'}">${homeOffice ? 'Confirmado às ' + homeOffice.hora : 'não registrado'}</span></div>
+        <div class="row"><span>➕ Plantão extra</span> <span class="${plantaoExtra ? 'status-ok' : 'status-pending'}">${plantaoExtra ? 'Confirmado às ' + plantaoExtra.hora : 'não registrado'}</span></div>
       </div>
     `;
     UNIDADES_MEI.forEach(u => {
       if (!regs[u]) {
-        html += `<button class="action-btn presenca" onclick="window.__registrarUnidadeMEI('${colaboradorId}','${u}')">✅ Confirmar presença — ${u}</button>`;
+        html += `<button class="action-btn presenca" onclick="window.__registrarUnidadeMEI('${colaboradorId}','${u}')">🏢 Confirmar presença — ${u}</button>`;
       }
     });
+    if (!homeOffice) {
+      html += `<button class="action-btn entrada" onclick="window.__registrarHomeOfficeMEI('${colaboradorId}')">🏠 Registrar Home Office</button>`;
+    }
     if (regs.Buritis && regs.Pampulha) {
       html += `<p style="text-align:center;color:#E2001A;font-weight:bold;margin-top:10px;">🔥 Dia com atendimento nas 2 unidades — plantão e passagem extra!</p>`;
     }
@@ -349,10 +361,19 @@ window.__registrarPonto = async (colaboradorId, campo) => {
   telaAcaoColaborador(colaboradorId);
 };
 
-window.__registrarPresencaEscala = async (colaboradorId, falta) => {
+window.__registrarModalidade = async (colaboradorId, modalidade) => {
   const data = todayStr();
-  await salvarRegistro(data, colaboradorId, { falta });
-  toast(falta ? 'Falta registrada.' : 'Presença confirmada!');
+  await salvarRegistro(data, colaboradorId, { modalidade });
+  toast(modalidade === 'presencial' ? '🏢 Modalidade: Presencial' : '🏠 Modalidade: Home Office');
+  telaAcaoColaborador(colaboradorId);
+};
+
+window.__registrarPresencaEscala = async (colaboradorId, falta, modalidade) => {
+  const data = todayStr();
+  const campos = { falta };
+  if (!falta && modalidade) campos.modalidade = modalidade;
+  await salvarRegistro(data, colaboradorId, campos);
+  toast(falta ? 'Falta registrada.' : (modalidade === 'presencial' ? '🏢 Presença presencial confirmada!' : '🏠 Presença home office confirmada!'));
   telaAcaoColaborador(colaboradorId);
 };
 
@@ -360,6 +381,14 @@ window.__registrarUnidadeMEI = async (colaboradorId, unidade) => {
   const data = todayStr();
   await salvarRegistroMEI(data, colaboradorId, unidade);
   toast(`Presença confirmada em ${unidade}!`);
+  telaAcaoColaborador(colaboradorId);
+};
+
+window.__registrarHomeOfficeMEI = async (colaboradorId) => {
+  const data = todayStr();
+  const ref = doc(db, "registros", `${data}_${colaboradorId}_homeoffice`);
+  await setDoc(ref, { data, colaboradorId, tipo: 'home_office', hora: nowTime() }, { merge: true });
+  toast('🏠 Home Office registrado!');
   telaAcaoColaborador(colaboradorId);
 };
 
@@ -448,6 +477,7 @@ async function telaGestorPainel() {
       <h2>Relatório mensal</h2>
       <label>Mês</label>
       <input type="month" id="gMes" value="${todayStr().slice(0,7)}" onchange="window.__gerarRelatorio()">
+      <button class="secondary" style="margin-top:10px;" onclick="window.__exportarRelatorioCSV()">⬇️ Baixar relatório (Excel/CSV)</button>
       <div id="gRelatorio"></div>
     </div>
   `;
@@ -652,6 +682,8 @@ function formatarHoras(horasDecimais) {
   return `${h}h${m.toString().padStart(2,'0')}`;
 }
 
+let ultimoRelatorio = { mes: null, linhas: [] };
+
 window.__gerarRelatorio = async () => {
   const mes = document.getElementById('gMes').value;
   const div = document.getElementById('gRelatorio');
@@ -676,12 +708,15 @@ window.__gerarRelatorio = async () => {
       // Faltas que NÃO têm ocorrência justificando naquele dia
       const faltas = doColab.filter(r => r.falta === true && !datasComOcorrencia.has(r.data)).length;
       const totalHoras = doColab.reduce((soma, r) => soma + calcularHoras(r), 0);
+      const diasPresencial = doColab.filter(r => r.modalidade === 'presencial').length;
+      const diasHomeOffice = doColab.filter(r => r.modalidade === 'home_office').length;
       return {
         nome: c.nome, regime: c.regime,
         presenca: `${diasPresenca} dias`,
         faltas: `${faltas}`,
         faltasCor: faltas > 0 ? '#c0392b' : '#1e7a46',
         extra: formatarHoras(totalHoras),
+        modalidade: `🏢 ${diasPresencial} · 🏠 ${diasHomeOffice}`,
         ocorrencias: resumoOcorrencias,
       };
     } else if (c.regime === 'mei') {
@@ -694,32 +729,39 @@ window.__gerarRelatorio = async () => {
       const diasDuplaUnidade = Object.values(porDia).filter(u => u.length >= 2).length;
       const totalPassagens = Object.values(porDia).reduce((soma, u) => soma + u.length, 0);
       const plantoesExtras = doColab.filter(r => r.tipo === 'plantao_extra').length;
+      const diasHomeOffice = doColab.filter(r => r.tipo === 'home_office').length;
       return {
         nome: c.nome, regime: c.regime,
         presenca: `${diasTrabalhados} dias`,
         faltas: `${diasDuplaUnidade} c/ 2 unid. · ${plantoesExtras} extra(s)`,
         faltasCor: (diasDuplaUnidade > 0 || plantoesExtras > 0) ? '#E2001A' : '#999',
         extra: `${totalPassagens} passagens`,
+        modalidade: `🏢 ${diasTrabalhados} · 🏠 ${diasHomeOffice}`,
         ocorrencias: resumoOcorrencias,
       };
     } else {
       // escala
       const diasPresenca = doColab.filter(r => r.falta === false).length;
       const faltas = doColab.filter(r => r.falta === true && !datasComOcorrencia.has(r.data)).length;
+      const diasPresencial = doColab.filter(r => r.modalidade === 'presencial').length;
+      const diasHomeOffice = doColab.filter(r => r.modalidade === 'home_office').length;
       return {
         nome: c.nome, regime: c.regime,
         presenca: `${diasPresenca} dias`,
         faltas: `${faltas}`,
         faltasCor: faltas > 0 ? '#c0392b' : '#1e7a46',
         extra: '—',
+        modalidade: `🏢 ${diasPresencial} · 🏠 ${diasHomeOffice}`,
         ocorrencias: resumoOcorrencias,
       };
     }
   });
 
+  ultimoRelatorio = { mes, linhas };
+
   div.innerHTML = `
     <table>
-      <tr><th>Nome</th><th>Regime</th><th>Presença</th><th>Faltas/Alertas</th><th>Horas/Passagens</th><th>Ocorrências</th></tr>
+      <tr><th>Nome</th><th>Regime</th><th>Presença</th><th>Faltas/Alertas</th><th>Horas/Passagens</th><th>Presencial · Home Office</th><th>Ocorrências</th></tr>
       ${linhas.map(l => `
         <tr>
           <td class="nome-caps">${l.nome}</td>
@@ -727,10 +769,40 @@ window.__gerarRelatorio = async () => {
           <td style="color:#1e7a46;font-weight:bold;">${l.presenca}</td>
           <td style="color:${l.faltasCor};font-weight:bold;">${l.faltas}</td>
           <td>${l.extra}</td>
+          <td style="font-size:11px;">${l.modalidade}</td>
           <td style="font-size:10px;color:#666;">${l.ocorrencias}</td>
         </tr>
       `).join('')}
     </table>`;
+};
+
+window.__exportarRelatorioCSV = () => {
+  if (!ultimoRelatorio.linhas || ultimoRelatorio.linhas.length === 0) {
+    toast('Gere o relatório do mês antes de baixar.');
+    return;
+  }
+
+  const cabecalho = ['Nome', 'Regime', 'Presença', 'Faltas/Alertas', 'Horas/Passagens', 'Presencial · Home Office', 'Ocorrências'];
+  const linhasCSV = ultimoRelatorio.linhas.map(l => [
+    l.nome, l.regime.toUpperCase(), l.presenca, l.faltas, l.extra, l.modalidade, l.ocorrencias
+  ]);
+
+  const escapar = (valor) => `"${String(valor).replace(/"/g, '""')}"`;
+  const conteudo = [cabecalho, ...linhasCSV]
+    .map(linha => linha.map(escapar).join(';'))
+    .join('\r\n');
+
+  // BOM (\uFEFF) garante acentuação correta ao abrir no Excel
+  const blob = new Blob(['\uFEFF' + conteudo], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `relatorio_ponto_${ultimoRelatorio.mes}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  toast('Relatório baixado!');
 };
 
 // ============================================================
