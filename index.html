@@ -219,6 +219,10 @@ function gerarDatasDoMes(mes, quantidade) {
 
 let colaboradores = [];
 
+function colaboradoresOrdenados() {
+  return [...colaboradores].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+}
+
 async function carregarColaboradores() {
   const snap = await getDocs(collection(db, "colaboradores"));
   colaboradores = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -268,7 +272,7 @@ function telaSelecionarColaborador() {
   app.innerHTML = `
     <div class="card">
       <h2>Quem é você?</h2>
-      ${colaboradores.map(c => `
+      ${colaboradoresOrdenados().map(c => `
         <button class="emp-btn nome-caps" onclick="window.__selecionarColaborador('${c.id}')">${c.nome}</button>
       `).join('')}
     </div>
@@ -462,8 +466,10 @@ async function telaGestorPainel() {
     </div>
 
     <div class="card">
-      <h2>Colaboradores (${colaboradores.length})</h2>
-      <div class="table-wrap" id="gLista"></div>
+      <details>
+        <summary style="cursor:pointer;font-size:17px;font-weight:bold;">Colaboradores (${colaboradores.length})</summary>
+        <div class="table-wrap" id="gLista" style="margin-top:10px;"></div>
+      </details>
     </div>
 
     <div class="card">
@@ -471,7 +477,7 @@ async function telaGestorPainel() {
       <p style="font-size:12px;color:#666;margin-top:0;">Corrija modalidade, horários, unidades ou observações de qualquer dia.</p>
       <label>Colaborador</label>
       <select id="eColaborador">
-        ${colaboradores.map(c => `<option value="${c.id}" style="text-transform:uppercase;">${c.nome}</option>`).join('')}
+        ${colaboradoresOrdenados().map(c => `<option value="${c.id}" style="text-transform:uppercase;">${c.nome}</option>`).join('')}
       </select>
       <label>Data</label>
       <input type="date" id="eData" value="${todayStr()}">
@@ -484,7 +490,7 @@ async function telaGestorPainel() {
       <p style="font-size:12px;color:#666;margin-top:0;">Atestado, não comparecimento, folga concedida ou troca — não conta como falta comum no relatório.</p>
       <label>Colaborador</label>
       <select id="oColaborador">
-        ${colaboradores.map(c => `<option value="${c.id}" style="text-transform:uppercase;">${c.nome}</option>`).join('')}
+        ${colaboradoresOrdenados().map(c => `<option value="${c.id}" style="text-transform:uppercase;">${c.nome}</option>`).join('')}
       </select>
       <label>Data</label>
       <input type="date" id="oData" value="${todayStr()}">
@@ -501,18 +507,26 @@ async function telaGestorPainel() {
     </div>
 
     <div class="card">
-      <h2>Ocorrências registradas</h2>
-      <label>Mês</label>
-      <input type="month" id="oMes" value="${todayStr().slice(0,7)}" onchange="window.__listarOcorrencias()">
-      <div class="table-wrap" id="gOcorrencias"></div>
+      <details>
+        <summary style="cursor:pointer;font-size:17px;font-weight:bold;">Ocorrências registradas</summary>
+        <div style="margin-top:10px;">
+          <label>Mês</label>
+          <input type="month" id="oMes" value="${todayStr().slice(0,7)}" onchange="window.__listarOcorrencias()">
+          <div class="table-wrap" id="gOcorrencias"></div>
+        </div>
+      </details>
     </div>
 
     <div class="card">
-      <h2>Relatório mensal</h2>
-      <label>Mês</label>
-      <input type="month" id="gMes" value="${todayStr().slice(0,7)}" onchange="window.__gerarRelatorio()">
-      <button class="secondary" style="margin-top:10px;" onclick="window.__exportarRelatorioCSV()">⬇️ Baixar relatório (Excel/CSV)</button>
-      <div class="table-wrap" id="gRelatorio"></div>
+      <details>
+        <summary style="cursor:pointer;font-size:17px;font-weight:bold;">Relatório mensal</summary>
+        <div style="margin-top:10px;">
+          <label>Mês</label>
+          <input type="month" id="gMes" value="${todayStr().slice(0,7)}" onchange="window.__gerarRelatorio()">
+          <button class="secondary" style="margin-top:10px;" onclick="window.__exportarRelatorioCSV()">⬇️ Baixar relatório (Excel/CSV)</button>
+          <div class="table-wrap" id="gRelatorio"></div>
+        </div>
+      </details>
     </div>
   `;
   window.__atualizarExtraRegime();
@@ -567,7 +581,7 @@ function renderListaGestor() {
   div.innerHTML = `
     <table>
       <tr><th>Nome</th><th>Regime</th><th></th></tr>
-      ${colaboradores.map(c => `
+      ${colaboradoresOrdenados().map(c => `
         <tr>
           <td class="nome-caps">${c.nome}</td>
           <td><span class="badge ${c.regime}">${c.regime.toUpperCase()}</span></td>
@@ -856,7 +870,7 @@ window.__gerarRelatorio = async () => {
     const ocorrSnap = await getDocs(collection(db, "ocorrencias"));
     const ocorrencias = ocorrSnap.docs.map(d => d.data()).filter(o => o.data && typeof o.data === 'string');
 
-    const linhas = colaboradores.map(c => {
+    const linhas = colaboradoresOrdenados().map(c => {
       const doColab = registros.filter(r => r.colaboradorId === c.id && r.data.startsWith(mes));
       const ocorrDoColab = ocorrencias.filter(o => o.colaboradorId === c.id && o.data.startsWith(mes));
       const datasComOcorrencia = new Set(ocorrDoColab.map(o => o.data));
@@ -925,7 +939,7 @@ window.__gerarRelatorio = async () => {
         <tr>
           <th>Nome</th><th>Regime</th><th>Presença</th><th>Faltas</th>
           <th>Plantão outra unidade</th><th>Plantão(ões) extra(s)</th>
-          <th>Horas</th><th>Presencial · Home Office</th><th>Ocorrências</th>
+          <th>Horas</th><th>Presencial · Home Office</th>
         </tr>
         ${linhas.map(l => `
           <tr>
@@ -937,34 +951,34 @@ window.__gerarRelatorio = async () => {
             <td>${l.plantaoExtra}</td>
             <td>${l.horas}</td>
             <td style="font-size:11px;">${l.modalidade}</td>
-            <td style="font-size:10px;color:#666;">${l.ocorrencias}</td>
           </tr>
         `).join('')}
       </table>
 
-      <p style="font-size:11px;color:#888;margin-top:14px;margin-bottom:6px;">
-        Detalhamento dia a dia de cada colaborador 👇
-      </p>
-
-      ${linhas.map(l => `
-        <details style="margin-bottom:6px;background:#F0EEE8;border-radius:8px;padding:8px 12px;">
-          <summary class="nome-caps" style="cursor:pointer;font-weight:bold;font-size:13px;">
-            ${l.nome} <span style="font-weight:normal;color:#888;font-size:11px;">— ${l.detalheDias.length} dia(s) com registro</span>
-          </summary>
-          ${l.detalheDias.length === 0
-            ? `<p style="font-size:12px;color:#999;margin:8px 0 0;">Nenhum registro neste mês.</p>`
-            : `<table style="margin-top:8px;">
-                <tr><th>Data</th><th>O que aconteceu</th></tr>
-                ${l.detalheDias.map(d => `
-                  <tr>
-                    <td style="white-space:nowrap;">${fmtDatePt(d.data)}</td>
-                    <td style="font-size:12px;">${d.descricao}</td>
-                  </tr>
-                `).join('')}
-              </table>`
-          }
-        </details>
-      `).join('')}
+      <details style="margin-top:14px;">
+        <summary style="cursor:pointer;font-size:12px;color:#888;">📋 Detalhamento dia a dia de cada colaborador (inclui ocorrências)</summary>
+        <div style="margin-top:8px;">
+          ${linhas.map(l => `
+            <details style="margin-bottom:6px;background:#F0EEE8;border-radius:8px;padding:8px 12px;">
+              <summary class="nome-caps" style="cursor:pointer;font-weight:bold;font-size:13px;">
+                ${l.nome} <span style="font-weight:normal;color:#888;font-size:11px;">— ${l.detalheDias.length} dia(s) com registro</span>
+              </summary>
+              ${l.detalheDias.length === 0
+                ? `<p style="font-size:12px;color:#999;margin:8px 0 0;">Nenhum registro neste mês.</p>`
+                : `<table style="margin-top:8px;">
+                    <tr><th>Data</th><th>O que aconteceu</th></tr>
+                    ${l.detalheDias.map(d => `
+                      <tr>
+                        <td style="white-space:nowrap;">${fmtDatePt(d.data)}</td>
+                        <td style="font-size:12px;">${d.descricao}</td>
+                      </tr>
+                    `).join('')}
+                  </table>`
+              }
+            </details>
+          `).join('')}
+        </div>
+      </details>
     `;
   } catch (erro) {
     console.error('Erro ao gerar relatório:', erro);
@@ -979,14 +993,28 @@ window.__exportarRelatorioCSV = () => {
   }
 
   const cabecalho = [
-    'Nome', 'Regime', 'Presença', 'Faltas', 'Plantão outra unidade', 'Plantão(ões) extra(s)',
-    'Horas', 'Presencial · Home Office', 'Ocorrências', 'Detalhamento diário'
+    'Nome / Data', 'Regime / O que aconteceu', 'Presença', 'Faltas',
+    'Plantão outra unidade', 'Plantão(ões) extra(s)', 'Horas', 'Presencial · Home Office'
   ];
-  const linhasCSV = ultimoRelatorio.linhas.map(l => [
-    l.nome, l.regime.toUpperCase(), l.presenca, l.faltas, l.plantaoOutraUnidade, l.plantaoExtra,
-    l.horas, l.modalidade, l.ocorrencias,
-    l.detalheDias.map(d => `${fmtDatePt(d.data)}: ${d.descricao}`).join(' | ') || '—'
-  ]);
+
+  const linhasCSV = [];
+  ultimoRelatorio.linhas.forEach(l => {
+    // Linha-resumo do colaborador (nome + dados do mês)
+    linhasCSV.push([
+      l.nome, l.regime.toUpperCase(), l.presenca, l.faltas,
+      l.plantaoOutraUnidade, l.plantaoExtra, l.horas, l.modalidade
+    ]);
+    // Uma linha para cada dia com o que aconteceu naquele dia
+    if (l.detalheDias.length === 0) {
+      linhasCSV.push(['—', 'Nenhum registro neste mês', '', '', '', '', '', '']);
+    } else {
+      l.detalheDias.forEach(d => {
+        linhasCSV.push([fmtDatePt(d.data), d.descricao, '', '', '', '', '', '']);
+      });
+    }
+    // Linha em branco separando um colaborador do próximo
+    linhasCSV.push(['', '', '', '', '', '', '', '']);
+  });
 
   const escapar = (valor) => `"${String(valor).replace(/"/g, '""')}"`;
   const conteudo = [cabecalho, ...linhasCSV]
