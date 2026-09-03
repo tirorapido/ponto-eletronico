@@ -294,6 +294,8 @@ async function telaAcaoColaborador(colaboradorId) {
 
   if (c.regime === 'clt') {
     const reg = await getRegistro(data, colaboradorId);
+    const extraSnap = await getDoc(doc(db, "registros", `${data}_${colaboradorId}_extra`));
+    const plantaoExtra = extraSnap.exists() ? extraSnap.data() : null;
     obsAtual = reg.observacaoColaborador || '';
     html += `
       <div class="status-box">
@@ -302,6 +304,7 @@ async function telaAcaoColaborador(colaboradorId) {
         <div class="row"><span>Saída almoço</span> <span class="${reg.saidaAlmoco ? 'status-ok' : 'status-pending'}">${reg.saidaAlmoco || 'não registrada'}</span></div>
         <div class="row"><span>Retorno almoço</span> <span class="${reg.retornoAlmoco ? 'status-ok' : 'status-pending'}">${reg.retornoAlmoco || 'não registrado'}</span></div>
         <div class="row"><span>Saída</span> <span class="${reg.saida ? 'status-ok' : 'status-pending'}">${reg.saida || 'não registrada'}</span></div>
+        <div class="row"><span>➕ Plantão extra</span> <span class="${plantaoExtra ? 'status-ok' : 'status-pending'}">${plantaoExtra ? 'Confirmado às ' + plantaoExtra.hora : 'não registrado'}</span></div>
       </div>
     `;
     if (!reg.modalidade) {
@@ -317,6 +320,11 @@ async function telaAcaoColaborador(colaboradorId) {
       html += `<button class="action-btn saida" onclick="window.__registrarPonto('${colaboradorId}','saida')">🚪 Registrar Saída</button>`;
     } else {
       html += `<p style="text-align:center;color:#1e7a46;font-weight:bold;">Ponto do dia já registrado!</p>`;
+    }
+    if (!plantaoExtra) {
+      html += `<button class="action-btn falta" style="background:#E2001A;margin-top:10px;" onclick="window.__registrarPlantaoExtra('${colaboradorId}')">➕ Registrar Plantão Extra</button>`;
+    } else {
+      html += `<p style="text-align:center;color:#E2001A;font-weight:bold;margin-top:10px;">➕ Plantão extra já registrado hoje!</p>`;
     }
   } else {
     const regs = await getRegistrosMEIDoDia(data, colaboradorId);
@@ -639,6 +647,8 @@ window.__carregarPontoParaEdicao = async () => {
 
   if (c.regime === 'clt') {
     const reg = await getRegistro(data, colaboradorId);
+    const extraSnap = await getDoc(doc(db, "registros", `${data}_${colaboradorId}_extra`));
+    const extra = extraSnap.exists() ? extraSnap.data() : null;
     div.innerHTML = `
       <div class="checkbox-line">
         <input type="checkbox" id="eFalta" ${reg.falta === true ? 'checked' : ''}>
@@ -657,6 +667,11 @@ window.__carregarPontoParaEdicao = async () => {
       <div class="row-flex">
         <div><label>Retorno almoço</label><input type="time" id="eRetornoAlmoco" value="${reg.retornoAlmoco || ''}"></div>
         <div><label>Saída</label><input type="time" id="eSaida" value="${reg.saida || ''}"></div>
+      </div>
+      <div class="checkbox-line">
+        <input type="checkbox" id="eExtraCLT" ${extra ? 'checked' : ''}>
+        <label for="eExtraCLT">➕ Plantão extra</label>
+        <input type="time" id="eExtraCLTHora" value="${extra ? extra.hora : ''}" style="max-width:110px;margin:0 0 0 auto;">
       </div>
       <label>Observação do colaborador</label>
       <textarea id="eObs" rows="2">${reg.observacaoColaborador || ''}</textarea>
@@ -707,6 +722,16 @@ window.__salvarEdicaoCLT = async (colaboradorId, data) => {
     saida: saida || null,
     observacaoColaborador: observacaoColaborador || null,
   });
+
+  const extraChecked = document.getElementById('eExtraCLT').checked;
+  const extraRef = doc(db, "registros", `${data}_${colaboradorId}_extra`);
+  if (extraChecked) {
+    const hora = document.getElementById('eExtraCLTHora').value || nowTime();
+    await setDoc(extraRef, { data, colaboradorId, tipo: 'plantao_extra', hora });
+  } else {
+    await deleteDoc(extraRef).catch(() => {});
+  }
+
   toast('Ponto corrigido com sucesso!');
   window.__gerarRelatorio();
 };
@@ -828,6 +853,10 @@ function gerarDetalheDias(c, doColab, ocorrDoColab) {
 
   if (c.regime === 'clt') {
     doColab.forEach(r => {
+      if (r.tipo === 'plantao_extra') {
+        addInfo(r.data, '➕ Plantão extra');
+        return;
+      }
       if (r.falta === true) {
         addInfo(r.data, '❌ Falta');
       } else {
@@ -896,13 +925,14 @@ window.__gerarRelatorio = async () => {
         const totalHoras = doColab.reduce((soma, r) => soma + calcularHoras(r), 0);
         const diasPresencial = doColab.filter(r => r.modalidade === 'presencial').length;
         const diasHomeOffice = doColab.filter(r => r.modalidade === 'home_office').length;
+        const plantoesExtrasCLT = doColab.filter(r => r.tipo === 'plantao_extra').length;
         return {
           nome: c.nome, regime: c.regime,
           presenca: `${diasPresenca} dias`,
           faltas: `${faltas} falta(s)`,
           faltasCor: faltas > 0 ? '#c0392b' : '#1e7a46',
           plantaoOutraUnidade: '0',
-          plantaoExtra: '0',
+          plantaoExtra: `${plantoesExtrasCLT}`,
           horas: formatarHoras(totalHoras),
           modalidade: `🏢 ${diasPresencial} · 🏠 ${diasHomeOffice}`,
           ocorrencias: resumoOcorrencias,
