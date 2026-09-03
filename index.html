@@ -129,7 +129,6 @@
 
 <header>
   <h1>TIRO<span>O</span> RÁPIDO</h1>
-  <div class="sub">Ponto Eletrônico</div>
 </header>
 
 <div class="container" id="app">
@@ -545,6 +544,16 @@ async function telaGestorPainel() {
         </div>
       </details>
     </div>
+
+    <div class="card" style="border:1px solid #f5c6cb;">
+      <details>
+        <summary style="cursor:pointer;font-size:15px;font-weight:bold;color:#c0392b;">⚠️ Zona de risco — zerar dados para novo teste</summary>
+        <div style="margin-top:10px;">
+          <p style="font-size:12px;color:#666;">Isso apaga <strong>permanentemente</strong> todos os colaboradores, pontos registrados e ocorrências. Use apenas para reiniciar um teste do zero.</p>
+          <button class="action-btn falta" onclick="window.__limparTodosOsDados()">🗑️ Apagar todos os dados</button>
+        </div>
+      </details>
+    </div>
   `;
   window.__atualizarExtraRegime();
   renderListaGestor();
@@ -637,6 +646,36 @@ window.__excluirColaborador = async (id) => {
   toast('Colaborador excluído.');
   await carregarColaboradores();
   telaGestorPainel();
+};
+
+window.__limparTodosOsDados = async () => {
+  const passo1 = confirm(
+    'Isso vai APAGAR PERMANENTEMENTE todos os colaboradores, pontos e ocorrências.\n\n' +
+    'Não tem como desfazer. Continuar?'
+  );
+  if (!passo1) return;
+
+  const digitado = prompt('Para confirmar de vez, digite EXCLUIR (em maiúsculas) e clique em OK:');
+  if (digitado !== 'EXCLUIR') {
+    toast('Operação cancelada — nada foi apagado.');
+    return;
+  }
+
+  toast('Apagando dados, aguarde...');
+  try {
+    for (const nomeColecao of ['colaboradores', 'registros', 'ocorrencias']) {
+      const snap = await getDocs(collection(db, nomeColecao));
+      for (const docSnap of snap.docs) {
+        await deleteDoc(doc(db, nomeColecao, docSnap.id));
+      }
+    }
+    toast('Todos os dados foram apagados!');
+    await carregarColaboradores();
+    telaGestorPainel();
+  } catch (erro) {
+    console.error('Erro ao limpar dados:', erro);
+    toast('Erro ao apagar alguns dados. Veja o console para detalhes.');
+  }
 };
 
 window.__carregarPontoParaEdicao = async () => {
@@ -846,21 +885,24 @@ window.__removerOcorrencia = async (id) => {
 
 function gerarDetalheDias(c, doColab, ocorrDoColab) {
   const porData = {};
-  const addInfo = (data, texto) => {
-    if (!porData[data]) porData[data] = [];
-    porData[data].push(texto);
+  const ensureDay = (data) => {
+    if (!porData[data]) {
+      porData[data] = { data, eventos: [], unidadesCount: 0, obsColaborador: '', ocorrenciaTipo: '', obsGestor: '' };
+    }
+    return porData[data];
   };
 
   if (c.regime === 'clt') {
     doColab.forEach(r => {
+      const dia = ensureDay(r.data);
       if (r.tipo === 'plantao_extra') {
-        addInfo(r.data, '➕ Plantão extra');
+        dia.eventos.push('Plantão extra');
         return;
       }
       if (r.falta === true) {
-        addInfo(r.data, '❌ Falta');
+        dia.eventos.push('Falta');
       } else {
-        const modal = r.modalidade === 'presencial' ? '🏢 Presencial' : (r.modalidade === 'home_office' ? '🏠 Home Office' : '');
+        const modal = r.modalidade === 'presencial' ? 'Presencial' : (r.modalidade === 'home_office' ? 'Home Office' : '');
         let horario = '';
         if (r.entrada && r.saida) {
           const almoco = (r.saidaAlmoco && r.retornoAlmoco) ? `, almoço ${r.saidaAlmoco}–${r.retornoAlmoco}` : '';
@@ -868,31 +910,37 @@ function gerarDetalheDias(c, doColab, ocorrDoColab) {
         } else if (r.entrada) {
           horario = ` — entrada ${r.entrada} (sem saída registrada)`;
         }
-        if (modal || horario) addInfo(r.data, `${modal}${horario}`);
+        if (modal || horario) dia.eventos.push(`${modal}${horario}`);
       }
-      if (r.observacaoColaborador) addInfo(r.data, `📝 ${r.observacaoColaborador}`);
+      if (r.observacaoColaborador) dia.obsColaborador = r.observacaoColaborador;
     });
   } else {
     doColab.forEach(r => {
-      if (r.unidade) addInfo(r.data, `🏢 ${r.unidade}`);
-      if (r.tipo === 'plantao_extra') addInfo(r.data, '➕ Plantão extra');
-      if (r.tipo === 'home_office') addInfo(r.data, '🏠 Home Office');
-      if (r.observacaoColaborador) addInfo(r.data, `📝 ${r.observacaoColaborador}`);
+      const dia = ensureDay(r.data);
+      if (r.unidade) { dia.eventos.push(r.unidade); dia.unidadesCount++; }
+      if (r.tipo === 'plantao_extra') dia.eventos.push('Plantão extra');
+      if (r.tipo === 'home_office') dia.eventos.push('Home Office');
+      if (r.observacaoColaborador) dia.obsColaborador = r.observacaoColaborador;
     });
   }
 
   ocorrDoColab.forEach(o => {
+    const dia = ensureDay(o.data);
     const tipoInfo = TIPOS_OCORRENCIA[o.tipo] || { label: o.tipo };
-    addInfo(o.data, `📋 ${tipoInfo.label}${o.observacao ? ' — ' + o.observacao : ''}`);
+    dia.ocorrenciaTipo = tipoInfo.label;
+    dia.obsGestor = o.observacao || '';
   });
 
-  return Object.entries(porData)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([data, itens]) => {
-      const unidadesNoDia = itens.filter(i => i.startsWith('🏢')).length;
-      const destaque = (c.regime === 'mei' && unidadesNoDia >= 2) ? ' — 🔥 DIA COM 2 UNIDADES' : '';
-      return { data, descricao: itens.join('  +  ') + destaque };
-    });
+  return Object.values(porData)
+    .sort((a, b) => a.data.localeCompare(b.data))
+    .map(dia => ({
+      data: dia.data,
+      evento: dia.eventos.join(' + ') || '—',
+      obsColaborador: dia.obsColaborador,
+      ocorrenciaTipo: dia.ocorrenciaTipo,
+      obsGestor: dia.obsGestor,
+      destaque: (c.regime === 'mei' && dia.unidadesCount >= 2) ? 'DIA COM 2 UNIDADES' : '',
+    }));
 }
 
 let ultimoRelatorio = { mes: null, linhas: [] };
@@ -1006,11 +1054,15 @@ window.__gerarRelatorio = async () => {
               ${l.detalheDias.length === 0
                 ? `<p style="font-size:12px;color:#999;margin:8px 0 0;">Nenhum registro neste mês.</p>`
                 : `<table style="margin-top:8px;">
-                    <tr><th>Data</th><th>O que aconteceu</th></tr>
+                    <tr><th>Data</th><th>O que aconteceu</th><th>Obs. colaborador</th><th>Ocorrência</th><th>Obs. gestor</th><th>Alerta</th></tr>
                     ${l.detalheDias.map(d => `
                       <tr>
                         <td style="white-space:nowrap;">${fmtDatePt(d.data)}</td>
-                        <td style="font-size:12px;">${d.descricao}</td>
+                        <td style="font-size:12px;">${d.evento}</td>
+                        <td style="font-size:11px;color:#555;">${d.obsColaborador || '—'}</td>
+                        <td style="font-size:11px;color:#555;">${d.ocorrenciaTipo || '—'}</td>
+                        <td style="font-size:11px;color:#555;">${d.obsGestor || '—'}</td>
+                        <td style="font-size:11px;color:#E2001A;font-weight:bold;">${d.destaque || '—'}</td>
                       </tr>
                     `).join('')}
                   </table>`
@@ -1034,7 +1086,8 @@ window.__exportarRelatorioCSV = () => {
 
   const cabecalho = [
     'Nome / Data', 'Regime / O que aconteceu', 'Presença', 'Faltas',
-    'Plantão outra unidade', 'Plantão(ões) extra(s)', 'Horas', 'Presencial · Home Office'
+    'Plantão outra unidade', 'Plantão(ões) extra(s)', 'Horas', 'Presencial · Home Office',
+    'Observação do colaborador', 'Ocorrência', 'Observação do gestor', 'Alerta'
   ];
 
   const linhasCSV = [];
@@ -1042,18 +1095,22 @@ window.__exportarRelatorioCSV = () => {
     // Linha-resumo do colaborador (nome + dados do mês)
     linhasCSV.push([
       l.nome, l.regime.toUpperCase(), l.presenca, l.faltas,
-      l.plantaoOutraUnidade, l.plantaoExtra, l.horas, l.modalidade
+      l.plantaoOutraUnidade, l.plantaoExtra, l.horas, l.modalidade,
+      '', '', '', ''
     ]);
-    // Uma linha para cada dia com o que aconteceu naquele dia
+    // Uma linha para cada dia com o que aconteceu naquele dia, em colunas separadas
     if (l.detalheDias.length === 0) {
-      linhasCSV.push(['—', 'Nenhum registro neste mês', '', '', '', '', '', '']);
+      linhasCSV.push(['—', 'Nenhum registro neste mês', '', '', '', '', '', '', '', '', '', '']);
     } else {
       l.detalheDias.forEach(d => {
-        linhasCSV.push([fmtDatePt(d.data), d.descricao, '', '', '', '', '', '']);
+        linhasCSV.push([
+          fmtDatePt(d.data), d.evento, '', '', '', '', '', '',
+          d.obsColaborador || '', d.ocorrenciaTipo || '', d.obsGestor || '', d.destaque || ''
+        ]);
       });
     }
     // Linha em branco separando um colaborador do próximo
-    linhasCSV.push(['', '', '', '', '', '', '', '']);
+    linhasCSV.push(['', '', '', '', '', '', '', '', '', '', '', '']);
   });
 
   const escapar = (valor) => `"${String(valor).replace(/"/g, '""')}"`;
