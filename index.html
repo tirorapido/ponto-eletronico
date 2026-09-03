@@ -510,9 +510,18 @@ async function telaGestorPainel() {
       <details>
         <summary style="cursor:pointer;font-size:17px;font-weight:bold;">Ocorrências registradas</summary>
         <div style="margin-top:10px;">
-          <label>Mês</label>
-          <input type="month" id="oMes" value="${todayStr().slice(0,7)}" onchange="window.__listarOcorrencias()">
-          <div class="table-wrap" id="gOcorrencias"></div>
+          <div class="row-flex">
+            <div>
+              <label>Mês</label>
+              <input type="month" id="oMes" value="${todayStr().slice(0,7)}" onchange="window.__listarOcorrencias()">
+            </div>
+            <div>
+              <label>Dia específico (opcional)</label>
+              <input type="date" id="oDiaFiltro" onchange="window.__listarOcorrencias()">
+            </div>
+          </div>
+          <button class="secondary" onclick="document.getElementById('oDiaFiltro').value=''; window.__listarOcorrencias();">Limpar filtro de dia</button>
+          <div class="table-wrap" id="gOcorrencias" style="margin-top:10px;"></div>
         </div>
       </details>
     </div>
@@ -764,6 +773,7 @@ window.__salvarOcorrencia = async () => {
 
 window.__listarOcorrencias = async () => {
   const mes = document.getElementById('oMes').value;
+  const diaFiltro = document.getElementById('oDiaFiltro').value; // formato YYYY-MM-DD ou vazio
   const div = document.getElementById('gOcorrencias');
   div.innerHTML = `<p style="color:#999;font-size:12px;">Carregando...</p>`;
 
@@ -771,11 +781,11 @@ window.__listarOcorrencias = async () => {
     const snap = await getDocs(collection(db, "ocorrencias"));
     const ocorrencias = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(o => o.data && typeof o.data === 'string' && o.data.startsWith(mes))
-      .sort((a, b) => a.data.localeCompare(b.data));
+      .filter(o => o.data && typeof o.data === 'string' && (diaFiltro ? o.data === diaFiltro : o.data.startsWith(mes)))
+      .sort((a, b) => a.data.localeCompare(b.data) || (colaboradores.find(c=>c.id===a.colaboradorId)?.nome || '').localeCompare(colaboradores.find(c=>c.id===b.colaboradorId)?.nome || '', 'pt-BR'));
 
     if (ocorrencias.length === 0) {
-      div.innerHTML = `<p style="color:#999;font-size:13px;">Nenhuma ocorrência neste mês.</p>`;
+      div.innerHTML = `<p style="color:#999;font-size:13px;">Nenhuma ocorrência ${diaFiltro ? 'nesse dia' : 'neste mês'}.</p>`;
       return;
     }
 
